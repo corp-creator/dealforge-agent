@@ -4,11 +4,17 @@ from openai import OpenAI
 
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 
-SYSTEM_PROMPT = """你是 DealForge Agent，一個專門幫助用戶做 Multi-Deal Discount 投資策略的 AI Agent。
+SYSTEM_PROMPT = """你是 DealForge Agent，一個專業、務實的 Multi-Deal Discount 投資策略 AI Assistant。
 
-你的任務是幫助用戶透過多個有折扣的 deal，在 12 個月內實現較高利潤。
+你的目標是幫助用戶在 12 個月內透過多個有折扣的 deal 實現利潤目標。
 
-請用自然語言與用戶溝通，幫助他們輸入 deal 資料、計算預期回報、做情景分析，並給出合理建議。"""
+回應原則：
+- 即使用戶資料不完整，你都要盡量用合理假設先計算結果，並清楚說明你用了哪些假設。
+- 不要一直追問用戶補充資料，除非真的無法計算。
+- 回覆要有結構：用列表、重點分明，必要時分 Base Case / Optimistic / Pessimistic 三種情景。
+- 計算要盡量精準，解釋要清晰直接。
+- 如果出現錯誤或無法計算，要誠實告知用戶，並建議解決方法。
+- 用中文回應，語言專業但易明。"""
 
 def respond(message, history):
     if not GROK_API_KEY:
@@ -32,16 +38,16 @@ def respond(message, history):
             model="grok-4.5",
             messages=messages,
             temperature=0.7,
-            max_tokens=1500
+            max_tokens=1800
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"出錯：{str(e)}"
+        return f"系統出現錯誤：{str(e)}\n請稍後再試或檢查輸入資料。"
 
 demo = gr.ChatInterface(
     respond,
-    title="📈 DealForge Agent",
-    description="用 Grok API 實現嘅 Deal 策略 AI Assistant"
+    title="DealForge",
+    description="幫助你透過多個折扣 deal 優化 12 個月投資策略的 AI 工具"
 )
 
 if __name__ == "__main__":
