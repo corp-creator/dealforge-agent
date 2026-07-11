@@ -38,7 +38,6 @@ def respond(message, history):
     except Exception as e:
         return f"出錯：{str(e)}"
 
-# 重要：加咗 server_name 同 server_port
 demo = gr.ChatInterface(
     respond,
     title="📈 DealForge Agent",
