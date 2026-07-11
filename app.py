@@ -41,8 +41,7 @@ def respond(message, history):
 demo = gr.ChatInterface(
     respond,
     title="📈 DealForge Agent",
-    description="用 Grok API 實現嘅 Deal 策略 AI Assistant",
-    theme="soft"
+    description="用 Grok API 實現嘅 Deal 策略 AI Assistant"
 )
 
 if __name__ == "__main__":
