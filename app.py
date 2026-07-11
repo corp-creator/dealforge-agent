@@ -3,10 +3,11 @@ import os
 import json
 from openai import OpenAI
 from typing import List, Dict
+import tempfile
 
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 
-# ==================== Tool: 計算多個 Deal 回報 ====================
+# ==================== Tool ====================
 def calculate_portfolio(deals: List[Dict]) -> str:
     total_allocation = 0
     total_expected_profit = 0
@@ -33,17 +34,15 @@ def calculate_portfolio(deals: List[Dict]) -> str:
     }, ensure_ascii=False)
 
 
-SYSTEM_PROMPT = """你是 DealForge Agent，一個專業、務實的 Multi-Deal Discount 投資策略 AI Assistant。
+SYSTEM_PROMPT = """你是 DealForge Agent，一個專業務實的投資策略 AI Assistant。
 
-你的目標是幫助用戶在 12 個月內透過多個有折扣的 deal 實現利潤目標。
+你的目標是幫助用戶透過多個折扣 deal 在 12 個月內實現利潤目標。
 
 回應原則：
-- 即使用戶資料不完整，你都要盡量用合理假設先計算結果，並清楚說明你用了哪些假設。
-- 不要一直追問用戶補充資料，除非真的無法計算。
-- 回覆要有結構：用列表、重點分明，必要時分 Base Case / Optimistic / Pessimistic 三種情景。
-- 計算要盡量精準，解釋要清晰直接。
-- 如果出現錯誤或無法計算，要誠實告知用戶，並建議解決方法。
-- 用中文回應，語言專業但易明。"""
+- 資料不完整時，用合理假設先計算，並清楚說明假設。
+- 不要一直追問，用戶體驗優先。
+- 回覆要有結構（列表 + 分情景）。
+- 用中文，專業但易明。"""
 
 tools = [
     {
@@ -74,23 +73,18 @@ tools = [
     }
 ]
 
-def respond(message, history):
+def respond(message, history, session_state):
     if not GROK_API_KEY:
-        return "請喺部署平台設定 GROK_API_KEY Secret。"
-    
-    client = OpenAI(
-        api_key=GROK_API_KEY,
-        base_url="https://api.x.ai/v1"
-    )
-    
+        return "請設定 GROK_API_KEY", history, session_state
+
+    client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
+
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    
     for user_msg, assistant_msg in history:
         messages.append({"role": "user", "content": user_msg})
         messages.append({"role": "assistant", "content": assistant_msg})
-    
     messages.append({"role": "user", "content": message})
-    
+
     try:
         response = client.chat.completions.create(
             model="grok-4.5",
@@ -100,44 +94,59 @@ def respond(message, history):
             temperature=0.7,
             max_tokens=1800
         )
-        
+
         if response.choices[0].message.tool_calls:
             tool_call = response.choices[0].message.tool_calls[0]
-            function_name = tool_call.function.name
-            arguments = json.loads(tool_call.function.arguments)
-            
-            if function_name == "calculate_portfolio":
-                result = calculate_portfolio(arguments["deals"])
-                messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": response.choices[0].message.tool_calls
-                })
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result
-                })
-                
-                final_response = client.chat.completions.create(
-                    model="grok-4.5",
-                    messages=messages,
-                    temperature=0.7
-                )
-                return final_response.choices[0].message.content
-        
-        return response.choices[0].message.content
-        
+            if tool_call.function.name == "calculate_portfolio":
+                args = json.loads(tool_call.function.arguments)
+                result = calculate_portfolio(args["deals"])
+                messages.append({"role": "assistant", "content": None, "tool_calls": response.choices[0].message.tool_calls})
+                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
+
+                final = client.chat.completions.create(model="grok-4.5", messages=messages, temperature=0.7)
+                reply = final.choices[0].message.content
+        else:
+            reply = response.choices[0].message.content
+
+        history.append((message, reply))
+        return "", history, session_state
+
     except Exception as e:
-        return f"系統出現錯誤：{str(e)}\n請稍後再試。"
+        return f"出錯：{str(e)}", history, session_state
 
 
-demo = gr.ChatInterface(
-    respond,
-    title="DealForge",
-    description="幫助你透過多個折扣 deal 優化 12 個月投資策略的 AI 工具"
-)
+def save_session(history):
+    if not history:
+        return None
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+    with open(temp.name, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+    return temp.name
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port)
+def load_session(file):
+    if file is None:
+        return []
+    with open(file.name, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+with gr.Blocks(title="DealForge") as demo:
+    gr.Markdown("# DealForge\n幫助你透過多個折扣 deal 優化 12 個月投資策略的 AI 工具")
+
+    chatbot = gr.Chatbot(height=500)
+    msg = gr.Textbox(placeholder="輸入你的 deal 資料或問題...", scale=4)
+    with gr.Row():
+        submit = gr.Button("發送", variant="primary")
+        clear = gr.Button("清除對話")
+        save_btn = gr.Button("儲存對話")
+        load_btn = gr.UploadButton("載入對話", file_types=[".json"])
+
+    session_state = gr.State([])
+
+    submit.click(respond, [msg, chatbot, session_state], [msg, chatbot, session_state])
+    msg.submit(respond, [msg, chatbot, session_state], [msg, chatbot, session_state])
+    clear.click(lambda: ([], []), None, [chatbot, session_state])
+    save_btn.click(save_session, chatbot, gr.File())
+    load_btn.upload(load_session, load_btn, chatbot)
+
+demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
