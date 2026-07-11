@@ -8,10 +8,6 @@ GROK_API_KEY = os.getenv("GROK_API_KEY")
 
 # ==================== Tool: 計算多個 Deal 回報 ====================
 def calculate_portfolio(deals: List[Dict]) -> str:
-    """
-    計算多個 deal 的預期回報
-    deals 格式: [{"allocation": 40000, "discount": 0.28, "expected_gain": 0.80, "success_rate": 0.75, "trim_ratio": 0.60}, ...]
-    """
     total_allocation = 0
     total_expected_profit = 0
 
@@ -25,7 +21,7 @@ def calculate_portfolio(deals: List[Dict]) -> str:
         effective_entry = allocation * (1 + discount)
         expected_exit = effective_entry * (1 + expected_gain)
         gross_profit = expected_exit * trim_ratio - allocation * trim_ratio
-        net_profit = gross_profit * (1 - 0.23) * success_rate   # 扣 23% drag
+        net_profit = gross_profit * (1 - 0.23) * success_rate
 
         total_allocation += allocation
         total_expected_profit += net_profit
@@ -37,7 +33,6 @@ def calculate_portfolio(deals: List[Dict]) -> str:
     }, ensure_ascii=False)
 
 
-# ==================== System Prompt ====================
 SYSTEM_PROMPT = """你是 DealForge Agent，一個專業、務實的 Multi-Deal Discount 投資策略 AI Assistant。
 
 你的目標是幫助用戶在 12 個月內透過多個有折扣的 deal 實現利潤目標。
@@ -50,7 +45,6 @@ SYSTEM_PROMPT = """你是 DealForge Agent，一個專業、務實的 Multi-Deal 
 - 如果出現錯誤或無法計算，要誠實告知用戶，並建議解決方法。
 - 用中文回應，語言專業但易明。"""
 
-# ==================== Tool 定义 ====================
 tools = [
     {
         "type": "function",
@@ -107,7 +101,6 @@ def respond(message, history):
             max_tokens=1800
         )
         
-        # 處理 tool call
         if response.choices[0].message.tool_calls:
             tool_call = response.choices[0].message.tool_calls[0]
             function_name = tool_call.function.name
