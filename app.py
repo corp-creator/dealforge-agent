@@ -3,10 +3,10 @@ import os
 import json
 from openai import OpenAI
 from typing import List, Dict
-import tempfile
 
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 
+# ==================== Tool: 計算多個 Deal 回報 ====================
 def calculate_portfolio(deals: List[Dict]) -> str:
     total_allocation = 0
     total_expected_profit = 0
@@ -76,16 +76,21 @@ tools = [
 
 def respond(message, history):
     if not GROK_API_KEY:
-        return "請設定 GROK_API_KEY", history
-
-    client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
-
+        return "請喺部署平台設定 GROK_API_KEY Secret。"
+    
+    client = OpenAI(
+        api_key=GROK_API_KEY,
+        base_url="https://api.x.ai/v1"
+    )
+    
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    
     for user_msg, assistant_msg in history:
         messages.append({"role": "user", "content": user_msg})
         messages.append({"role": "assistant", "content": assistant_msg})
+    
     messages.append({"role": "user", "content": message})
-
+    
     try:
         response = client.chat.completions.create(
             model="grok-4.5",
@@ -95,12 +100,14 @@ def respond(message, history):
             temperature=0.7,
             max_tokens=1800
         )
-
+        
         if response.choices[0].message.tool_calls:
             tool_call = response.choices[0].message.tool_calls[0]
-            if tool_call.function.name == "calculate_portfolio":
-                args = json.loads(tool_call.function.arguments)
-                result = calculate_portfolio(args["deals"])
+            function_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+            
+            if function_name == "calculate_portfolio":
+                result = calculate_portfolio(arguments["deals"])
                 messages.append({
                     "role": "assistant",
                     "content": None,
@@ -111,49 +118,26 @@ def respond(message, history):
                     "tool_call_id": tool_call.id,
                     "content": result
                 })
-                final = client.chat.completions.create(model="grok-4.5", messages=messages, temperature=0.7)
-                reply = final.choices[0].message.content
-        else:
-            reply = response.choices[0].message.content
-
-        history.append((message, reply))
-        return "", history
-
+                
+                final_response = client.chat.completions.create(
+                    model="grok-4.5",
+                    messages=messages,
+                    temperature=0.7
+                )
+                return final_response.choices[0].message.content
+        
+        return response.choices[0].message.content
+        
     except Exception as e:
-        return f"出錯：{str(e)}", history
+        return f"系統出現錯誤：{str(e)}\n請稍後再試。"
 
 
-def save_session(history):
-    if not history:
-        return None
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
-    with open(temp.name, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-    return temp.name
+demo = gr.ChatInterface(
+    respond,
+    title="DealForge",
+    description="幫助你透過多個折扣 deal 優化 12 個月投資策略的 AI 工具"
+)
 
-def load_session(file):
-    if file is None:
-        return []
-    with open(file.name, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-with gr.Blocks(title="DealForge") as demo:
-    gr.Markdown("# DealForge\n幫助你透過多個折扣 deal 優化 12 個月投資策略的 AI 工具")
-
-    chatbot = gr.Chatbot(height=500)
-    msg = gr.Textbox(placeholder="輸入問題或 deal 資料...")
-    
-    with gr.Row():
-        submit = gr.Button("發送", variant="primary")
-        clear = gr.Button("清除對話")
-        save_btn = gr.Button("儲存對話")
-        load_btn = gr.UploadButton("載入對話", file_types=[".json"])
-
-    submit.click(respond, [msg, chatbot], [msg, chatbot])
-    msg.submit(respond, [msg, chatbot], [msg, chatbot])
-    clear.click(lambda: [], None, chatbot)
-    save_btn.click(save_session, chatbot, gr.File())
-    load_btn.upload(load_session, load_btn, chatbot)
-
-demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 7860))
+    demo.launch(server_name="0.0.0.0", server_port=port)
