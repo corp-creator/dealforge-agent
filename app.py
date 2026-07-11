@@ -99,7 +99,7 @@ def respond(message, history):
     
     try:
         response = client.chat.completions.create(
-            model="grok-2",
+            model="grok-4.5",
             messages=messages,
             tools=tools,
             tool_choice="auto",
@@ -127,7 +127,7 @@ def respond(message, history):
                 })
                 
                 final_response = client.chat.completions.create(
-                    model="grok-2",
+                    model="grok-4.5",
                     messages=messages,
                     temperature=0.7
                 )
