@@ -29,7 +29,7 @@ def respond(message, history):
     
     try:
         response = client.chat.completions.create(
-            model="grok-beta",
+            model="grok-4.5",
             messages=messages,
             temperature=0.7,
             max_tokens=1500
