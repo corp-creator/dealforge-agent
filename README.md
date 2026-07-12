@@ -1,2 +1,2 @@
 # dealforge-agent
-Make a great achievement! Deal Strategy AI Agent
+Make A Great Achievement! Deal Strategy AI Agent
