@@ -16,7 +16,7 @@ def respond(message, history):
     messages = [{"role": "system", "content": "你係 DealForge Agent，一個幫助用戶做投資策略嘅助手。"}]
     
     for msg in history:
-        messages.append(msg)   # 直接用 dict 格式
+        messages.append(msg)
 
     messages.append({"role": "user", "content": message})
 
@@ -29,7 +29,6 @@ def respond(message, history):
         )
         reply = response.choices[0].message.content
 
-        # 用新格式加返去 history
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": reply})
 
@@ -41,7 +40,7 @@ def respond(message, history):
 
 with gr.Blocks(title="DealForge") as demo:
     gr.Markdown("# DealForge")
-    chatbot = gr.Chatbot(height=500, type="messages")   # 重要！加咗 type="messages"
+    chatbot = gr.Chatbot(height=500)          # 已經移除 type="messages"
     msg = gr.Textbox(placeholder="輸入問題...")
     clear = gr.Button("清除對話")
 
