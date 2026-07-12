@@ -1,87 +1,45 @@
 import gradio as gr
 import os
-import json
 from openai import OpenAI
-from typing import List, Dict
-from docx import Document
-from docx.shared import Pt, Inches
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-import tempfile
 
 GROK_API_KEY = os.getenv("GROK_API_KEY")
 
-# ==================== Tool: 計算組合回報 ====================
-def calculate_portfolio(deals: List[Dict]) -> str:
-    total_allocation = 0
-    total_expected_profit = 0
-
-    for deal in deals:
-        allocation = deal.get("allocation", 0)
-        discount = deal.get("discount", 0)
-        expected_gain = deal.get("expected_gain", 0)
-        success_rate = deal.get("success_rate", 0)
-        trim_ratio = deal.get("trim_ratio", 0.6)
-
-        effective_entry = allocation * (1 + discount)
-        expected_exit = effective_entry * (1 + expected_gain)
-        gross_profit = expected_exit * trim_ratio - allocation * trim_ratio
-        net_profit = gross_profit * (1 - 0.23) * success_rate
-
-        total_allocation += allocation
-        total_expected_profit += net_profit
-
-    return json.dumps({
-        "total_allocation": round(total_allocation, 0),
-        "total_expected_profit": round(total_expected_profit, 0),
-        "expected_roi": round((total_expected_profit / total_allocation) * 100, 1) if total_allocation > 0 else 0
-    }, ensure_ascii=False)
-
-
-# ==================== Tool: 生成 Word 報告 ====================
-def generate_word_report(summary: str) -> str:
-    doc = Document()
-    doc.add_heading('DealForge Investment Analysis Report', 0)
-    doc.add_paragraph(summary)
-    
-    # 之後可以再加強格式同內容
-    temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
-    doc.save(temp_path)
-    return temp_path
-
-
-SYSTEM_PROMPT = """你是 DealForge Agent，一個專業的投資策略 AI Assistant。
-
-當用戶要求生成報告時，你應該呼叫 generate_word_report 工具，並將總結內容傳入。"""
-
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate_portfolio",
-            "description": "計算多個 deal 的總回報",
-            "parameters": {...}   # 省略，保持之前一樣
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_word_report",
-            "description": "生成 Word 格式的投資分析報告",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "summary": {"type": "string"}
-                },
-                "required": ["summary"]
-            }
-        }
-    }
-]
-
 def respond(message, history):
-    # ...（同之前 Tool calling 邏輯類似，處理 generate_word_report）
-    # 如果 call 到 generate_word_report，就生成文件並返回 download link
-    pass   # 完整 code 我會再畀你
+    if not GROK_API_KEY:
+        return "請設定 GROK_API_KEY", history
 
-# 為咗篇幅，以上係結構示範
-# 我而家直接畀你完整可運作版本
+    client = OpenAI(
+        api_key=GROK_API_KEY,
+        base_url="https://api.x.ai/v1"
+    )
+
+    messages = [{"role": "system", "content": "你係 DealForge Agent，一個幫助用戶做投資策略嘅 AI 助手。"}]
+    for user_msg, assistant_msg in history:
+        messages.append({"role": "user", "content": user_msg})
+        messages.append({"role": "assistant", "content": assistant_msg})
+    messages.append({"role": "user", "content": message})
+
+    try:
+        response = client.chat.completions.create(
+            model="grok-4.5",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1500
+        )
+        reply = response.choices[0].message.content
+        history.append((message, reply))
+        return "", history
+    except Exception as e:
+        return f"出錯：{str(e)}", history
+
+
+with gr.Blocks(title="DealForge") as demo:
+    gr.Markdown("# DealForge")
+    chatbot = gr.Chatbot(height=500)
+    msg = gr.Textbox(placeholder="輸入問題...")
+    clear = gr.Button("清除對話")
+
+    msg.submit(respond, [msg, chatbot], [msg, chatbot])
+    clear.click(lambda: [], None, chatbot)
+
+demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
